@@ -3,11 +3,13 @@ const TEXTURE_ROOT = "./assets/textures/";
 
 const WORLD = Object.freeze({
   seed: 573921,
-  forestRadius: 58,
+  forestRadius: 110,
   clearingRadius: 9,
   treeSpacing: 4.10,
-  heroTreeCount: 3,
-  lowTreeViewDistance: 64,
+  heroTreeCount: 0,
+  nearTreeDistance: 25,
+  mediumTreeDistance: 75,
+  farTreeViewDistance: 110,
   vegetationViewDistance: 44
 });
 
@@ -445,10 +447,25 @@ export async function createForest(scene, camera) {
 
   setStatus("Loading trees…");
   const treeTextures = createTreeTextureSet(scene);
-  const heroTreeRoot = await loadHeroTree(scene, treeTextures);
-  const lowTree = await loadMultipartAsset(
+  // Three mobile-safe procedural LOD assets. Their triangle budgets are
+  // approximately 9,344, 2,976 and 928 triangles respectively.
+  const nearTree = await loadMultipartAsset(
     scene,
-    "pine-tree-low.glb",
+    "pine-tree-10000.glb",
+    12.5,
+    0.58,
+    treeTextures
+  );
+  const mediumTree = await loadMultipartAsset(
+    scene,
+    "pine-tree-3000.glb",
+    12.5,
+    0.58,
+    treeTextures
+  );
+  const farTree = await loadMultipartAsset(
+    scene,
+    "pine-tree-1000.glb",
     12.5,
     0.58,
     treeTextures
@@ -464,23 +481,8 @@ export async function createForest(scene, camera) {
   const deadfall = await loadMultipartAsset(scene, "dead-tree-trunk.glb", 1.15, 0.55);
 
   const allTrees = makeTreeLayout();
-  const heroTransforms = allTrees.slice(0, WORLD.heroTreeCount);
-  const lowTreeTransforms = allTrees.slice(WORLD.heroTreeCount);
-
-  // High-detail trees are few and remain close to the central clearing.
-  heroTransforms.forEach((transform, index) => {
-    const tree = index === 0 ? heroTreeRoot : heroTreeRoot.clone(`heroTree${index}`);
-    if (!tree) return;
-    tree.position.set(transform.x, transform.y ?? -0.23, transform.z);
-    tree.rotationQuaternion = null;
-    tree.rotation.set(0, transform.rotation, 0);
-    tree.scaling.set(
-      transform.scaleX ?? transform.scale,
-      transform.scaleY ?? transform.scale,
-      transform.scaleZ ?? transform.scale
-    );
-    tree.setEnabled(true);
-  });
+  // Trees are assigned to an LOD tier every time the player moves.
+  // The same deterministic forest layout is shared by all three tiers.
 
   const fernTransforms = makeScatter(150, WORLD.clearingRadius + 1.5, 50, 8103, 0.7, 1.35, allTrees);
   const shrubTransforms = makeScatter(55, WORLD.clearingRadius + 2.5, 50, 9221, 0.78, 1.35, allTrees);
@@ -682,7 +684,23 @@ export async function createForest(scene, camera) {
       return [first, ...items.slice(1)];
     }
 
-    lowTree.setTransforms(anchored(withinDistance(lowTreeTransforms, camera, WORLD.lowTreeViewDistance)));
+    const nearTransforms = [];
+    const mediumTransforms = [];
+    const farTransforms = [];
+
+    for (const tree of allTrees) {
+      const distance = Math.hypot(
+        tree.x - camera.position.x,
+        tree.z - camera.position.z
+      );
+      if (distance <= WORLD.nearTreeDistance) nearTransforms.push(tree);
+      else if (distance <= WORLD.mediumTreeDistance) mediumTransforms.push(tree);
+      else if (distance <= WORLD.farTreeViewDistance) farTransforms.push(tree);
+    }
+
+    nearTree.setTransforms(anchored(nearTransforms));
+    mediumTree.setTransforms(anchored(mediumTransforms));
+    farTree.setTransforms(anchored(farTransforms));
     fern.setTransforms(anchored(withinDistance(fernTransforms, camera, WORLD.vegetationViewDistance)));
     shrub.setTransforms(anchored(withinDistance(shrubTransforms, camera, WORLD.vegetationViewDistance)));
     grass.setTransforms(anchored(withinDistance(grassTransforms, camera, 34)));
