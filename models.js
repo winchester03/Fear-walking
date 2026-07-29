@@ -3,14 +3,12 @@ const TEXTURE_ROOT = "./assets/textures/";
 
 const WORLD = Object.freeze({
   seed: 573921,
-  forestRadius: 110,
-  clearingRadius: 4.5,
-  treeSpacing: 5.1,
-  heroTreeCount: 0,
-  nearTreeDistance: 25,
-  mediumTreeDistance: 75,
-  farTreeViewDistance: 110,
-  vegetationViewDistance: 48
+  forestRadius: 58,
+  clearingRadius: 9,
+  treeSpacing: 4.10,
+  heroTreeCount: 3,
+  lowTreeViewDistance: 64,
+  vegetationViewDistance: 44
 });
 
 function seededRandom(seed) {
@@ -93,7 +91,7 @@ function applyTreeTextures(meshes, textures) {
       material.metallic = 0;
       material.roughness = isFoliage ? 0.96 : 0.99;
       material.environmentIntensity = isFoliage ? 0.22 : 0.34;
-      material.maxSimultaneousLights = 4;
+      material.maxSimultaneousLights = 8;
       material.backFaceCulling = !isFoliage;
 
       if (isFoliage) {
@@ -108,7 +106,7 @@ function applyTreeTextures(meshes, textures) {
       material.diffuseTexture = texture;
       material.diffuseColor = isFoliage ? needleTint : barkTint;
       material.specularColor = BABYLON.Color3.Black();
-      material.maxSimultaneousLights = 4;
+      material.maxSimultaneousLights = 8;
       material.backFaceCulling = !isFoliage;
       material.emissiveColor = isFoliage
         ? BABYLON.Color3.Black()
@@ -445,62 +443,119 @@ export async function createForest(scene, camera) {
   const status = document.getElementById("loadingStatus");
   const setStatus = text => { if (status) status.textContent = text; };
 
-  setStatus("Loading original pine trees…");
+  setStatus("Loading trees…");
   const treeTextures = createTreeTextureSet(scene);
-
-  async function loadTree(primaryFile, fallbackFile = "pine-tree-low.glb") {
-    try {
-      return await loadMultipartAsset(scene, primaryFile, 12.5, 0.58, treeTextures);
-    } catch (error) {
-      console.warn(`Could not load ${primaryFile}; falling back to ${fallbackFile}.`, error);
-      return loadMultipartAsset(scene, fallbackFile, 12.5, 0.58, treeTextures);
-    }
-  }
-
-  // Load the three LOD assets sequentially to avoid a large mobile memory spike.
-  // Use the original detailed pine model close to the player. The prior generated
-  // LOD meshes looked like silhouettes and have been removed from the visible forest.
-  const nearTree = await loadTree("pine-tree.glb", "pine-tree-low.glb");
-  setStatus("Loading original distant pines…");
-  const mediumTree = await loadTree("pine-tree-low.glb", "pine-tree-1000.glb");
-  setStatus("Loading distant tree silhouettes…");
-  const farTree = await loadTree("pine-tree-1000.glb", "pine-tree-low.glb");
+  const heroTreeRoot = await loadHeroTree(scene, treeTextures);
+  const lowTree = await loadMultipartAsset(
+    scene,
+    "pine-tree-low.glb",
+    12.5,
+    0.58,
+    treeTextures
+  );
 
   setStatus("Loading ferns…");
-  const fern = await loadMultipartAsset(scene, "fern.glb", 0.9, 0.92);
+  const fern = await loadMultipartAsset(scene, "fern.glb", 0.75, 0.64);
   setStatus("Loading shrubs…");
-  const shrub = await loadMultipartAsset(scene, "shrub.glb", 1.15, 0.88);
+  const shrub = await loadMultipartAsset(scene, "shrub.glb", 1.25, 0.62);
   setStatus("Loading grass…");
-  const grass = await loadMultipartAsset(scene, "grass.glb", 0.48, 1.0);
-  setStatus("Loading fallen trees…");
-  const deadfall = await loadMultipartAsset(scene, "dead-tree-trunk.glb", 1.15, 0.72);
+  const grass = await loadMultipartAsset(scene, "grass.glb", 1.05, 1.0);
+  setStatus("Loading deadfall…");
+  const deadfall = await loadMultipartAsset(scene, "dead-tree-trunk.glb", 1.15, 0.55);
 
   const allTrees = makeTreeLayout();
-  const fernTransforms = makeScatter(310, 3.5, 62, 71931, 0.72, 1.28, allTrees);
-  const shrubTransforms = makeScatter(115, 5.5, 70, 51388, 0.68, 1.32, allTrees);
-  const grassTransforms = makeScatter(620, 2.5, 58, 92841, 0.72, 1.22, allTrees);
+  const heroTransforms = allTrees.slice(0, WORLD.heroTreeCount);
+  const lowTreeTransforms = allTrees.slice(WORLD.heroTreeCount);
 
-  // The old central cutscene pile is removed. Fallen trunks are dispersed
-  // throughout the forest with deterministic random placement.
-  const deadfallRandom = seededRandom(31843);
-  const deadfallTransforms = makeScatter(
-    26,
-    8,
-    88,
-    31842,
-    0.72,
-    1.28,
+  // High-detail trees are few and remain close to the central clearing.
+  heroTransforms.forEach((transform, index) => {
+    const tree = index === 0 ? heroTreeRoot : heroTreeRoot.clone(`heroTree${index}`);
+    if (!tree) return;
+    tree.position.set(transform.x, transform.y ?? -0.23, transform.z);
+    tree.rotationQuaternion = null;
+    tree.rotation.set(0, transform.rotation, 0);
+    tree.scaling.set(
+      transform.scaleX ?? transform.scale,
+      transform.scaleY ?? transform.scale,
+      transform.scaleZ ?? transform.scale
+    );
+    tree.setEnabled(true);
+  });
+
+  const fernTransforms = makeScatter(150, WORLD.clearingRadius + 1.5, 50, 8103, 0.7, 1.35, allTrees);
+  const shrubTransforms = makeScatter(55, WORLD.clearingRadius + 2.5, 50, 9221, 0.78, 1.35, allTrees);
+  // Dense ground cover fills most bare soil while preserving a roughly
+  // 7 m open core for the future fire and fallen-tree set piece.
+  const grassTransforms = makeScatter(
+    760,
+    2.8,
+    54,
+    1619,
+    0.46,
+    1.05,
     allTrees
   ).map(item => ({
     ...item,
-    y: -0.24 - deadfallRandom() * 0.14,
-    scaleX: item.scale * (0.9 + deadfallRandom() * 0.35),
-    scaleY: item.scale * (0.88 + deadfallRandom() * 0.16),
-    scaleZ: item.scale * (0.9 + deadfallRandom() * 0.25),
-    rotationX: (deadfallRandom() - 0.5) * 0.08,
-    rotationZ: (deadfallRandom() - 0.5) * 0.08
+    y: 0.06,
+    scaleX: item.scale * 0.72,
+    scaleY: item.scale,
+    scaleZ: item.scale * 0.72
+  }));
+  const deadfallRandom = seededRandom(31843);
+  const deadfallTransforms = makeScatter(
+    18,
+    WORLD.clearingRadius + 3,
+    50,
+    31842,
+    0.78,
+    1.32,
+    allTrees
+  ).map(item => ({
+    ...item,
+    y: -0.20 - deadfallRandom() * 0.22,
+    // Keep logs essentially horizontal. Only slight terrain-following tilt.
+    rotationX: 0,
+    rotationZ: 0
   }));
 
+  // Intentional connected deadfall pairs create longer, irregular silhouettes
+  // without needing additional models.
+  const joinedDeadfall = [
+    { x: 13.5, z: 10.5, y: -0.28, scale: 1.15, rotation: 0.62, rotationX: 0.04, rotationZ: -0.03 },
+    { x: 16.0, z: 12.2, y: -0.31, scale: 0.92, rotation: 0.98, rotationX: -0.03, rotationZ: 0.04 },
+    { x: -17.5, z: 8.0, y: -0.26, scale: 1.08, rotation: 2.42, rotationX: 0.02, rotationZ: 0.05 },
+    { x: -20.0, z: 10.0, y: -0.30, scale: 0.86, rotation: 2.08, rotationX: -0.04, rotationZ: -0.02 },
+    { x: 7.0, z: -18.5, y: -0.29, scale: 1.20, rotation: 5.35, rotationX: 0.03, rotationZ: -0.04 },
+    { x: 9.1, z: -21.0, y: -0.32, scale: 0.95, rotation: 5.72, rotationX: -0.02, rotationZ: 0.03 }
+  ];
+
+  const collapseRandom = seededRandom(40401);
+  const centralCollapse = [];
+
+  // A dense, chaotic pile of fallen trunks fills the clearing. Each piece
+  // remains close to horizontal, but varies in direction, height and scale so
+  // the pile reads as a natural mass collapse instead of a tidy campfire stack.
+  for (let index = 0; index < 24; index++) {
+    const angle = collapseRandom() * Math.PI * 2;
+    const radius = Math.sqrt(collapseRandom()) * 4.6;
+    centralCollapse.push({
+      x: Math.cos(angle) * radius,
+      z: Math.sin(angle) * radius,
+      y: -0.06 + (index % 5) * 0.16 + collapseRandom() * 0.09,
+      scale: 0.92 + collapseRandom() * 0.72,
+      scaleX: 0.9 + collapseRandom() * 0.5,
+      scaleY: 0.9 + collapseRandom() * 0.22,
+      scaleZ: 0.9 + collapseRandom() * 0.35,
+      rotation: collapseRandom() * Math.PI * 2,
+      rotationX: (collapseRandom() - 0.5) * 0.16,
+      rotationZ: (collapseRandom() - 0.5) * 0.16
+    });
+  }
+
+  deadfallTransforms.push(...joinedDeadfall, ...centralCollapse);
+
+  // Fast horizontal collision solver. It checks only nearby trunk centers and
+  // never invokes Babylon's expensive mesh collision pipeline.
   const playerRadius = 0.42;
   const trunkCollisionRadius = 0.48;
   camera.metadata = camera.metadata || {};
@@ -508,6 +563,7 @@ export async function createForest(scene, camera) {
     let x = proposed.x;
     let z = proposed.z;
 
+    // Keep the player inside the authored forest boundary.
     const worldLimit = WORLD.forestRadius - 1.5;
     const distanceFromCenter = Math.hypot(x, z);
     if (distanceFromCenter > worldLimit) {
@@ -516,7 +572,8 @@ export async function createForest(scene, camera) {
       z *= scale;
     }
 
-    // Only inspect nearby tree centers. This remains much cheaper than mesh collisions.
+    // Resolve against trunks with a cheap local circle test. Sliding is done
+    // independently on X and Z so contact does not lock movement.
     for (const tree of allTrees) {
       if (Math.abs(tree.x - x) > 2 || Math.abs(tree.z - z) > 2) continue;
       const radius = playerRadius + trunkCollisionRadius * (tree.scaleX ?? tree.scale);
@@ -524,11 +581,22 @@ export async function createForest(scene, camera) {
       const dz = z - tree.z;
       if (dx * dx + dz * dz >= radius * radius) continue;
 
-      const xBlocked = (x - tree.x) ** 2 + (current.z - tree.z) ** 2 < radius * radius;
-      const zBlocked = (current.x - tree.x) ** 2 + (z - tree.z) ** 2 < radius * radius;
-      if (!xBlocked) z = current.z;
-      else if (!zBlocked) x = current.x;
-      else { x = current.x; z = current.z; }
+      const xOnlyDx = x - tree.x;
+      const xOnlyDz = current.z - tree.z;
+      if (xOnlyDx * xOnlyDx + xOnlyDz * xOnlyDz >= radius * radius) {
+        z = current.z;
+        continue;
+      }
+
+      const zOnlyDx = current.x - tree.x;
+      const zOnlyDz = z - tree.z;
+      if (zOnlyDx * zOnlyDx + zOnlyDz * zOnlyDz >= radius * radius) {
+        x = current.x;
+        continue;
+      }
+
+      x = current.x;
+      z = current.z;
     }
 
     return new BABYLON.Vector3(x, proposed.y, z);
@@ -542,60 +610,66 @@ export async function createForest(scene, camera) {
     deadfall: deadfallTransforms.length
   };
 
-  function anchored(items) {
-    if (!items.length) return items;
-    return [{
-      ...items[0], scale: 1, scaleX: 1, scaleY: 1, scaleZ: 1,
-      rotation: 0, rotationX: 0, rotationZ: 0
-    }, ...items.slice(1)];
-  }
-
-  let lastUpdateX = Number.POSITIVE_INFINITY;
-  let lastUpdateZ = Number.POSITIVE_INFINITY;
-
-  function updateVisibleForest(force = false) {
-    const moved = Math.hypot(camera.position.x - lastUpdateX, camera.position.z - lastUpdateZ);
-    if (!force && moved < 2.5) return;
-    lastUpdateX = camera.position.x;
-    lastUpdateZ = camera.position.z;
-
-    const near = [];
-    const medium = [];
-    const far = [];
-    for (const tree of allTrees) {
-      const distance = Math.hypot(tree.x - camera.position.x, tree.z - camera.position.z);
-      if (distance <= WORLD.nearTreeDistance) near.push(tree);
-      else if (distance <= WORLD.mediumTreeDistance) medium.push(tree);
-      else if (distance <= WORLD.farTreeViewDistance) far.push(tree);
+  function updateVisibleVegetation() {
+    // Anchor is forced to scale 1 and rotation 0 so relative thin-instance transforms are stable.
+    function anchored(items) {
+      if (!items.length) return items;
+      const first = {
+        ...items[0],
+        scale: 1,
+        scaleX: 1,
+        scaleY: 1,
+        scaleZ: 1,
+        rotation: 0,
+        rotationX: 0,
+        rotationZ: 0
+      };
+      return [first, ...items.slice(1)];
     }
 
-    nearTree.setTransforms(anchored(near));
-    mediumTree.setTransforms(anchored(medium));
-    farTree.setTransforms(anchored(far));
-    deadfall.setTransforms(anchored(withinDistance(deadfallTransforms, camera, 52)));
-    fern.setTransforms(anchored(withinDistance(fernTransforms, camera, 42)));
-    shrub.setTransforms(anchored(withinDistance(shrubTransforms, camera, 48)));
+    lowTree.setTransforms(anchored(withinDistance(lowTreeTransforms, camera, WORLD.lowTreeViewDistance)));
+    fern.setTransforms(anchored(withinDistance(fernTransforms, camera, WORLD.vegetationViewDistance)));
+    shrub.setTransforms(anchored(withinDistance(shrubTransforms, camera, WORLD.vegetationViewDistance)));
     grass.setTransforms(anchored(withinDistance(grassTransforms, camera, 34)));
+    deadfall.setTransforms(anchored(withinDistance(deadfallTransforms, camera, WORLD.vegetationViewDistance)));
   }
 
-  updateVisibleForest(true);
-  let elapsed = 0;
+  updateVisibleVegetation();
+  let updateTimer = 0;
   scene.onBeforeRenderObservable.add(() => {
-    elapsed += scene.getEngine().getDeltaTime();
-    if (elapsed < 650) return;
-    elapsed = 0;
-    updateVisibleForest(false);
-  });
+    updateTimer += scene.getEngine().getDeltaTime();
+    if (updateTimer < 700) return;
+    updateTimer = 0;
+    updateVisibleVegetation();
+    });
 
   createDebugPanel(scene, counts);
   setStatus("Forest ready");
-  setTimeout(() => document.getElementById("loadingScreen")?.remove(), 180);
+  setTimeout(() => document.getElementById("loadingScreen")?.remove(), 250);
+
+  const perimeterCandidates = allTrees
+    .filter(tree => {
+      const distance = Math.hypot(tree.x, tree.z);
+      return distance >= WORLD.clearingRadius && distance <= WORLD.clearingRadius + 8.5;
+    })
+    .sort((a, b) => Math.atan2(a.z, a.x) - Math.atan2(b.z, b.x));
+
+  // Select trees around the full 360-degree perimeter instead of one cluster.
+  const burningTrees = [];
+  const burningTreeCount = Math.min(20, perimeterCandidates.length);
+  for (let index = 0; index < burningTreeCount; index++) {
+    burningTrees.push(
+      perimeterCandidates[Math.floor(index * perimeterCandidates.length / burningTreeCount)]
+    );
+  }
 
   return {
     counts,
     clearingRadius: WORLD.clearingRadius,
     forestRadius: WORLD.forestRadius,
-    shadowCasters: nearTree.meshes,
-    fireData: { burningTrees: [], collapseCenter: BABYLON.Vector3.Zero(), centralCollapse: [] }
+    fireData: {
+      burningTrees,
+      collapseCenter: new BABYLON.Vector3(0, 0, 0)
+    }
   };
 }

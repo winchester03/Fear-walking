@@ -1,192 +1,150 @@
 export function createScene(scene, canvas) {
   const camera = new BABYLON.FreeCamera(
     "forestCamera",
-    new BABYLON.Vector3(0, 1.68, -7.8),
+    new BABYLON.Vector3(0, 2, -5.5),
     scene
   );
 
-  camera.setTarget(new BABYLON.Vector3(0, 1.68, 0));
+  camera.setTarget(new BABYLON.Vector3(0, 2, 0));
   camera.minZ = 0.05;
   camera.inertia = 0;
+  // Build 0.4.1 uses a lightweight 2D collision solver in models.js.
+  // Babylon mesh collisions were causing the browser to stall on horizontal input.
   camera.checkCollisions = false;
   camera.applyGravity = false;
   camera.metadata = camera.metadata || {};
   camera.metadata.horizontalCollisionResolver = null;
-  camera.metadata.controlsEnabled = true;
+
   scene.activeCamera = camera;
 
-  const state = {
-    destination: null,
-    posture: "standing",
-    runHeld: false,
-    pointerId: null,
-    pointerDownAt: 0,
-    pointerDownX: 0,
-    pointerDownY: 0,
-    lastX: 0,
-    lastY: 0,
-    dragged: false,
-    longPressTimer: null
-  };
-
-  const postureHeights = {
-    standing: 1.68,
-    crouching: 1.08,
-    prone: 0.48
-  };
-
-  function setDestinationFromPointer(event) {
-    const pick = scene.pick(event.clientX, event.clientY, mesh => mesh.name === "forestGround");
-    if (!pick?.hit || !pick.pickedPoint) return;
-    state.destination = pick.pickedPoint.clone();
-    state.destination.y = camera.position.y;
-  }
+  let activePointer = null;
+  let lastX = 0;
+  let lastY = 0;
+  const lookSensitivity = 0.004;
 
   canvas.addEventListener("pointerdown", event => {
-    if (event.button !== undefined && event.button !== 0) return;
-    state.pointerId = event.pointerId;
-    state.pointerDownAt = performance.now();
-    state.pointerDownX = state.lastX = event.clientX;
-    state.pointerDownY = state.lastY = event.clientY;
-    state.dragged = false;
+    activePointer = event.pointerId;
+    lastX = event.clientX;
+    lastY = event.clientY;
     canvas.setPointerCapture?.(event.pointerId);
-
-    clearTimeout(state.longPressTimer);
-    state.longPressTimer = setTimeout(() => {
-      if (state.pointerId === event.pointerId && state.destination) {
-        state.runHeld = true;
-      }
-    }, 180);
   });
 
   canvas.addEventListener("pointermove", event => {
-    if (event.pointerId !== state.pointerId) return;
-    const totalDistance = Math.hypot(
-      event.clientX - state.pointerDownX,
-      event.clientY - state.pointerDownY
-    );
-    if (totalDistance > 10) state.dragged = true;
-
-    if (state.dragged) {
-      const sensitivity = 0.004;
-      camera.rotation.y += (event.clientX - state.lastX) * sensitivity;
-      camera.rotation.x += (event.clientY - state.lastY) * sensitivity;
-      camera.rotation.x = BABYLON.Scalar.Clamp(camera.rotation.x, -1.35, 1.35);
-    }
-    state.lastX = event.clientX;
-    state.lastY = event.clientY;
+    if (event.pointerId !== activePointer) return;
+    camera.rotation.y += (event.clientX - lastX) * lookSensitivity;
+    camera.rotation.x += (event.clientY - lastY) * lookSensitivity;
+    camera.rotation.x = BABYLON.Scalar.Clamp(camera.rotation.x, -1.45, 1.45);
+    lastX = event.clientX;
+    lastY = event.clientY;
   });
 
-  function releasePointer(event) {
-    if (event.pointerId !== state.pointerId) return;
-    clearTimeout(state.longPressTimer);
-    const heldFor = performance.now() - state.pointerDownAt;
-    if (!state.dragged && heldFor < 180) setDestinationFromPointer(event);
-    state.runHeld = false;
-    state.pointerId = null;
+  function stopLooking(event) {
+    if (event.pointerId !== activePointer) return;
+    activePointer = null;
     canvas.releasePointerCapture?.(event.pointerId);
   }
+  canvas.addEventListener("pointerup", stopLooking);
+  canvas.addEventListener("pointercancel", stopLooking);
 
-  canvas.addEventListener("pointerup", releasePointer);
-  canvas.addEventListener("pointercancel", releasePointer);
+  const movement = {
+    forward: false,
+    backward: false,
+    left: false,
+    right: false,
+    up: false,
+    down: false
+  };
 
-  const crouchButton = document.createElement("button");
-  crouchButton.id = "crouchButton";
-  crouchButton.type = "button";
-  crouchButton.textContent = "CROUCH";
-  crouchButton.setAttribute("aria-label", "Crouch. Hold to go prone.");
-  document.body.appendChild(crouchButton);
+  function createButton(label, bottom, side, sideDistance, action) {
+    const button = document.createElement("button");
+    button.textContent = label;
+    Object.assign(button.style, {
+      position: "fixed",
+      bottom,
+      width: "58px",
+      height: "58px",
+      borderRadius: "29px",
+      border: "1px solid rgba(255,255,255,.35)",
+      background: "rgba(0,0,0,.55)",
+      color: "white",
+      fontSize: "13px",
+      zIndex: "20",
+      touchAction: "none",
+      userSelect: "none",
+      webkitUserSelect: "none",
+      webkitTouchCallout: "none"
+    });
+    button.style[side] = sideDistance;
+    button.draggable = false;
 
-  let crouchPointer = null;
-  let crouchLongPress = false;
-  let crouchTimer = null;
-
-  function refreshCrouchLabel() {
-    crouchButton.textContent = state.posture === "standing"
-      ? "CROUCH"
-      : state.posture === "crouching"
-        ? "STAND"
-        : "GET UP";
-    crouchButton.dataset.posture = state.posture;
+    const setPressed = (event, pressed) => {
+      event.preventDefault();
+      event.stopPropagation();
+      movement[action] = pressed;
+      button.style.background = pressed ? "rgba(80,150,220,.7)" : "rgba(0,0,0,.55)";
+    };
+    button.addEventListener("pointerdown", event => setPressed(event, true));
+    ["pointerup", "pointercancel", "pointerleave"].forEach(type =>
+      button.addEventListener(type, event => setPressed(event, false))
+    );
+    document.body.appendChild(button);
   }
 
-  crouchButton.addEventListener("pointerdown", event => {
-    event.preventDefault();
-    event.stopPropagation();
-    crouchPointer = event.pointerId;
-    crouchLongPress = false;
-    crouchButton.setPointerCapture?.(event.pointerId);
-    crouchTimer = setTimeout(() => {
-      if (crouchPointer !== event.pointerId) return;
-      state.posture = "prone";
-      crouchLongPress = true;
-      refreshCrouchLabel();
-    }, 500);
-  });
+  createButton("FWD", "100px", "left", "76px", "forward");
+  createButton("BACK", "26px", "left", "76px", "backward");
+  createButton("LEFT", "63px", "left", "10px", "left");
+  createButton("RIGHT", "63px", "left", "142px", "right");
+  createButton("UP", "100px", "right", "22px", "up");
+  createButton("DOWN", "26px", "right", "22px", "down");
 
-  function releaseCrouch(event) {
-    if (event.pointerId !== crouchPointer) return;
-    clearTimeout(crouchTimer);
-    if (!crouchLongPress) {
-      state.posture = state.posture === "standing" ? "crouching" : "standing";
-      refreshCrouchLabel();
-    }
-    crouchPointer = null;
-    crouchButton.releasePointerCapture?.(event.pointerId);
-  }
-
-  crouchButton.addEventListener("pointerup", releaseCrouch);
-  crouchButton.addEventListener("pointercancel", releaseCrouch);
-  refreshCrouchLabel();
-
+  const keyboardMap = {
+    KeyW: "forward", ArrowUp: "forward",
+    KeyS: "backward", ArrowDown: "backward",
+    KeyA: "left", ArrowLeft: "left",
+    KeyD: "right", ArrowRight: "right",
+    Space: "up", ShiftLeft: "down", ShiftRight: "down"
+  };
   window.addEventListener("keydown", event => {
-    if (event.code === "KeyC") {
-      state.posture = state.posture === "standing" ? "crouching" : "standing";
-      refreshCrouchLabel();
-    }
-    if (event.code === "ShiftLeft" || event.code === "ShiftRight") state.runHeld = true;
+    const action = keyboardMap[event.code];
+    if (action) { movement[action] = true; event.preventDefault(); }
   });
   window.addEventListener("keyup", event => {
-    if (event.code === "ShiftLeft" || event.code === "ShiftRight") state.runHeld = false;
+    const action = keyboardMap[event.code];
+    if (action) { movement[action] = false; event.preventDefault(); }
   });
+  window.addEventListener("blur", () => Object.keys(movement).forEach(key => movement[key] = false));
 
   scene.onBeforeRenderObservable.add(() => {
     const deltaTime = Math.min(scene.getEngine().getDeltaTime() / 1000, 0.05);
-    const targetHeight = postureHeights[state.posture];
-    camera.position.y = BABYLON.Scalar.Lerp(camera.position.y, targetHeight, Math.min(1, deltaTime * 8));
+    const distance = 8 * deltaTime;
 
-    if (!state.destination) return;
+    const forward = camera.getDirection(BABYLON.Axis.Z);
+    const right = camera.getDirection(BABYLON.Axis.X);
+    forward.y = 0;
+    right.y = 0;
+    forward.normalize();
+    right.normalize();
 
-    const dx = state.destination.x - camera.position.x;
-    const dz = state.destination.z - camera.position.z;
-    const remaining = Math.hypot(dx, dz);
-    if (remaining < 0.18) {
-      state.destination = null;
-      state.runHeld = false;
-      return;
+    const movementVector = BABYLON.Vector3.Zero();
+    if (movement.forward) movementVector.addInPlace(forward);
+    if (movement.backward) movementVector.subtractInPlace(forward);
+    if (movement.left) movementVector.subtractInPlace(right);
+    if (movement.right) movementVector.addInPlace(right);
+
+    if (movementVector.lengthSquared() > 0) {
+      movementVector.normalize().scaleInPlace(distance);
+      const proposed = camera.position.add(movementVector);
+      const resolver = camera.metadata?.horizontalCollisionResolver;
+      const resolved = typeof resolver === "function"
+        ? resolver(camera.position, proposed)
+        : proposed;
+      camera.position.x = resolved.x;
+      camera.position.z = resolved.z;
     }
 
-    let speed = 3.0;
-    if (state.posture === "crouching") speed = 1.65;
-    if (state.posture === "prone") speed = 0.75;
-    if (state.runHeld && state.posture === "standing") speed = 6.2;
-
-    const step = Math.min(remaining, speed * deltaTime);
-    const proposed = new BABYLON.Vector3(
-      camera.position.x + (dx / remaining) * step,
-      camera.position.y,
-      camera.position.z + (dz / remaining) * step
-    );
-    const resolver = camera.metadata?.horizontalCollisionResolver;
-    const resolved = typeof resolver === "function"
-      ? resolver(camera.position, proposed)
-      : proposed;
-
-    const moved = Math.hypot(resolved.x - camera.position.x, resolved.z - camera.position.z);
-    camera.position.x = resolved.x;
-    camera.position.z = resolved.z;
-
-    if (moved < 0.001) state.destination = null;
+    if (movement.up) camera.position.y += distance;
+    if (movement.down) camera.position.y -= distance;
+    camera.position.y = Math.max(0.4, camera.position.y);
   });
 
   return { camera };
