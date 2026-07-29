@@ -4,13 +4,13 @@ const TEXTURE_ROOT = "./assets/textures/";
 const WORLD = Object.freeze({
   seed: 573921,
   forestRadius: 110,
-  clearingRadius: 9,
-  treeSpacing: 4.10,
+  clearingRadius: 4.5,
+  treeSpacing: 5.1,
   heroTreeCount: 0,
   nearTreeDistance: 25,
   mediumTreeDistance: 75,
   farTreeViewDistance: 110,
-  vegetationViewDistance: 44
+  vegetationViewDistance: 38
 });
 
 function seededRandom(seed) {
@@ -445,113 +445,50 @@ export async function createForest(scene, camera) {
   const status = document.getElementById("loadingStatus");
   const setStatus = text => { if (status) status.textContent = text; };
 
-  setStatus("Loading trees…");
+  setStatus("Loading optimized trees…");
   const treeTextures = createTreeTextureSet(scene);
-  // Three mobile-safe procedural LOD assets. Their triangle budgets are
-  // approximately 9,344, 2,976 and 928 triangles respectively.
-  async function loadTreeWithFallback(primaryFile) {
+
+  async function loadTree(primaryFile, fallbackFile = "pine-tree-low.glb") {
     try {
       return await loadMultipartAsset(scene, primaryFile, 12.5, 0.58, treeTextures);
-    } catch (primaryError) {
-      console.warn(`Could not load ${primaryFile}; using mobile fallback tree.`, primaryError);
-      return await loadMultipartAsset(scene, "pine-tree-low.glb", 12.5, 0.58, treeTextures);
+    } catch (error) {
+      console.warn(`Could not load ${primaryFile}; falling back to ${fallbackFile}.`, error);
+      return loadMultipartAsset(scene, fallbackFile, 12.5, 0.58, treeTextures);
     }
   }
 
-  const nearTree = await loadTreeWithFallback("pine-tree-10000.glb");
-  const mediumTree = await loadTreeWithFallback("pine-tree-3000.glb");
-  const farTree = await loadTreeWithFallback("pine-tree-1000.glb");
-
-  setStatus("Loading ferns…");
-  const fern = await loadMultipartAsset(scene, "fern.glb", 0.75, 0.64);
-  setStatus("Loading shrubs…");
-  const shrub = await loadMultipartAsset(scene, "shrub.glb", 1.25, 0.62);
-  setStatus("Loading grass…");
-  const grass = await loadMultipartAsset(scene, "grass.glb", 1.05, 1.0);
-  setStatus("Loading deadfall…");
+  // Load the three LOD assets sequentially to avoid a large mobile memory spike.
+  const nearTree = await loadTree("pine-tree-10000.glb");
+  setStatus("Loading medium trees…");
+  const mediumTree = await loadTree("pine-tree-3000.glb");
+  setStatus("Loading distant trees…");
+  const farTree = await loadTree("pine-tree-1000.glb");
+  setStatus("Loading fallen trees…");
   const deadfall = await loadMultipartAsset(scene, "dead-tree-trunk.glb", 1.15, 0.55);
 
   const allTrees = makeTreeLayout();
-  // Trees are assigned to an LOD tier every time the player moves.
-  // The same deterministic forest layout is shared by all three tiers.
 
-  const fernTransforms = makeScatter(150, WORLD.clearingRadius + 1.5, 50, 8103, 0.7, 1.35, allTrees);
-  const shrubTransforms = makeScatter(55, WORLD.clearingRadius + 2.5, 50, 9221, 0.78, 1.35, allTrees);
-  // Dense ground cover fills most bare soil while preserving a roughly
-  // 7 m open core for the future fire and fallen-tree set piece.
-  const grassTransforms = makeScatter(
-    760,
-    2.8,
-    54,
-    1619,
-    0.46,
-    1.05,
-    allTrees
-  ).map(item => ({
-    ...item,
-    y: 0.06,
-    scaleX: item.scale * 0.72,
-    scaleY: item.scale,
-    scaleZ: item.scale * 0.72
-  }));
+  // The old central cutscene pile is removed. Fallen trunks are dispersed
+  // throughout the forest with deterministic random placement.
   const deadfallRandom = seededRandom(31843);
   const deadfallTransforms = makeScatter(
-    18,
-    WORLD.clearingRadius + 3,
-    50,
+    26,
+    8,
+    88,
     31842,
-    0.78,
-    1.32,
+    0.72,
+    1.28,
     allTrees
   ).map(item => ({
     ...item,
-    y: -0.20 - deadfallRandom() * 0.22,
-    // Keep logs essentially horizontal. Only slight terrain-following tilt.
-    rotationX: 0,
-    rotationZ: 0
+    y: -0.24 - deadfallRandom() * 0.14,
+    scaleX: item.scale * (0.9 + deadfallRandom() * 0.35),
+    scaleY: item.scale * (0.88 + deadfallRandom() * 0.16),
+    scaleZ: item.scale * (0.9 + deadfallRandom() * 0.25),
+    rotationX: (deadfallRandom() - 0.5) * 0.08,
+    rotationZ: (deadfallRandom() - 0.5) * 0.08
   }));
 
-  // Intentional connected deadfall pairs create longer, irregular silhouettes
-  // without needing additional models.
-  const joinedDeadfall = [
-    { x: 13.5, z: 10.5, y: -0.28, scale: 1.15, rotation: 0.62, rotationX: 0.04, rotationZ: -0.03 },
-    { x: 16.0, z: 12.2, y: -0.31, scale: 0.92, rotation: 0.98, rotationX: -0.03, rotationZ: 0.04 },
-    { x: -17.5, z: 8.0, y: -0.26, scale: 1.08, rotation: 2.42, rotationX: 0.02, rotationZ: 0.05 },
-    { x: -20.0, z: 10.0, y: -0.30, scale: 0.86, rotation: 2.08, rotationX: -0.04, rotationZ: -0.02 },
-    { x: 7.0, z: -18.5, y: -0.29, scale: 1.20, rotation: 5.35, rotationX: 0.03, rotationZ: -0.04 },
-    { x: 9.1, z: -21.0, y: -0.32, scale: 0.95, rotation: 5.72, rotationX: -0.02, rotationZ: 0.03 }
-  ];
-
-  const collapseRandom = seededRandom(40401);
-  const centralCollapse = [];
-
-  // A dense, chaotic pile of fallen trunks fills the clearing. Each piece
-  // remains close to horizontal, but varies in direction, height and scale so
-  // the pile reads as a natural mass collapse instead of a tidy campfire stack.
-  for (let index = 0; index < 42; index++) {
-    // Bias the collapse toward the east-northeast so the timber mass reaches
-    // and merges with one edge of the clearing instead of remaining centered.
-    const angle = collapseRandom() * Math.PI * 2;
-    const radius = Math.sqrt(collapseRandom()) * 5.4;
-    const reach = index >= 30 ? 2.8 + collapseRandom() * 2.8 : 0;
-    centralCollapse.push({
-      x: Math.cos(angle) * radius + reach * 0.82,
-      z: Math.sin(angle) * radius + reach * 0.34,
-      y: -0.06 + (index % 5) * 0.16 + collapseRandom() * 0.09,
-      scale: 0.86 + collapseRandom() * 0.92,
-      scaleX: 0.9 + collapseRandom() * 0.5,
-      scaleY: 0.9 + collapseRandom() * 0.22,
-      scaleZ: 0.9 + collapseRandom() * 0.35,
-      rotation: collapseRandom() * Math.PI * 2,
-      rotationX: (collapseRandom() - 0.5) * 0.16,
-      rotationZ: (collapseRandom() - 0.5) * 0.16
-    });
-  }
-
-  deadfallTransforms.push(...joinedDeadfall, ...centralCollapse);
-
-  // Fast horizontal collision solver. It checks only nearby trunk centers and
-  // never invokes Babylon's expensive mesh collision pipeline.
   const playerRadius = 0.42;
   const trunkCollisionRadius = 0.48;
   camera.metadata = camera.metadata || {};
@@ -559,7 +496,6 @@ export async function createForest(scene, camera) {
     let x = proposed.x;
     let z = proposed.z;
 
-    // Keep the player inside the authored forest boundary.
     const worldLimit = WORLD.forestRadius - 1.5;
     const distanceFromCenter = Math.hypot(x, z);
     if (distanceFromCenter > worldLimit) {
@@ -568,8 +504,7 @@ export async function createForest(scene, camera) {
       z *= scale;
     }
 
-    // Resolve against trunks with a cheap local circle test. Sliding is done
-    // independently on X and Z so contact does not lock movement.
+    // Only inspect nearby tree centers. This remains much cheaper than mesh collisions.
     for (const tree of allTrees) {
       if (Math.abs(tree.x - x) > 2 || Math.abs(tree.z - z) > 2) continue;
       const radius = playerRadius + trunkCollisionRadius * (tree.scaleX ?? tree.scale);
@@ -577,74 +512,11 @@ export async function createForest(scene, camera) {
       const dz = z - tree.z;
       if (dx * dx + dz * dz >= radius * radius) continue;
 
-      const xOnlyDx = x - tree.x;
-      const xOnlyDz = current.z - tree.z;
-      if (xOnlyDx * xOnlyDx + xOnlyDz * xOnlyDz >= radius * radius) {
-        z = current.z;
-        continue;
-      }
-
-      const zOnlyDx = current.x - tree.x;
-      const zOnlyDz = z - tree.z;
-      if (zOnlyDx * zOnlyDx + zOnlyDz * zOnlyDz >= radius * radius) {
-        x = current.x;
-        continue;
-      }
-
-      x = current.x;
-      z = current.z;
-    }
-
-    // Fallen trunks use oriented capsule colliders. This catches the full
-    // length of each log while retaining the fast custom movement solver.
-    function deadfallDistanceSquared(px, pz, log) {
-      if (Math.abs(log.x - px) > 8.5 || Math.abs(log.z - pz) > 8.5) return Infinity;
-      const yaw = log.rotation ?? 0;
-      const axisX = Math.cos(yaw);
-      const axisZ = Math.sin(yaw);
-      const halfLength = 2.55 * (log.scaleX ?? log.scale ?? 1);
-      const ax = log.x - axisX * halfLength;
-      const az = log.z - axisZ * halfLength;
-      const bx = log.x + axisX * halfLength;
-      const bz = log.z + axisZ * halfLength;
-      const abx = bx - ax;
-      const abz = bz - az;
-      const lengthSquared = Math.max(0.0001, abx * abx + abz * abz);
-      const t = Math.max(0, Math.min(1, ((px - ax) * abx + (pz - az) * abz) / lengthSquared));
-      const closestX = ax + abx * t;
-      const closestZ = az + abz * t;
-      const dx = px - closestX;
-      const dz = pz - closestZ;
-      return dx * dx + dz * dz;
-    }
-
-    function intersectsDeadfall(px, pz, log) {
-      const radius = playerRadius + 0.34 * (log.scaleZ ?? log.scale ?? 1);
-      return deadfallDistanceSquared(px, pz, log) < radius * radius;
-    }
-
-    for (const log of deadfallTransforms) {
-      if (!intersectsDeadfall(x, z, log)) continue;
-
-      const currentDistance = deadfallDistanceSquared(current.x, current.z, log);
-      const proposedDistance = deadfallDistanceSquared(x, z, log);
-      const currentInside = intersectsDeadfall(current.x, current.z, log);
-
-      // If a player starts inside a collider, allow movement that increases
-      // distance from the log. This prevents the deadfall pile from trapping
-      // horizontal movement while still blocking entry from outside.
-      if (currentInside && proposedDistance > currentDistance + 0.0001) continue;
-
-      if (!intersectsDeadfall(x, current.z, log)) {
-        z = current.z;
-        continue;
-      }
-      if (!intersectsDeadfall(current.x, z, log)) {
-        x = current.x;
-        continue;
-      }
-      x = current.x;
-      z = current.z;
+      const xBlocked = (x - tree.x) ** 2 + (current.z - tree.z) ** 2 < radius * radius;
+      const zBlocked = (current.x - tree.x) ** 2 + (z - tree.z) ** 2 < radius * radius;
+      if (!xBlocked) z = current.z;
+      else if (!zBlocked) x = current.x;
+      else { x = current.x; z = current.z; }
     }
 
     return new BABYLON.Vector3(x, proposed.y, z);
@@ -652,89 +524,62 @@ export async function createForest(scene, camera) {
 
   const counts = {
     trees: allTrees.length,
-    ferns: fernTransforms.length,
-    shrubs: shrubTransforms.length,
-    grass: grassTransforms.length,
+    ferns: 0,
+    shrubs: 0,
+    grass: 0,
     deadfall: deadfallTransforms.length
   };
 
-  function updateVisibleVegetation() {
-    // Anchor is forced to scale 1 and rotation 0 so relative thin-instance transforms are stable.
-    function anchored(items) {
-      if (!items.length) return items;
-      const first = {
-        ...items[0],
-        scale: 1,
-        scaleX: 1,
-        scaleY: 1,
-        scaleZ: 1,
-        rotation: 0,
-        rotationX: 0,
-        rotationZ: 0
-      };
-      return [first, ...items.slice(1)];
-    }
-
-    const nearTransforms = [];
-    const mediumTransforms = [];
-    const farTransforms = [];
-
-    for (const tree of allTrees) {
-      const distance = Math.hypot(
-        tree.x - camera.position.x,
-        tree.z - camera.position.z
-      );
-      if (distance <= WORLD.nearTreeDistance) nearTransforms.push(tree);
-      else if (distance <= WORLD.mediumTreeDistance) mediumTransforms.push(tree);
-      else if (distance <= WORLD.farTreeViewDistance) farTransforms.push(tree);
-    }
-
-    nearTree.setTransforms(anchored(nearTransforms));
-    mediumTree.setTransforms(anchored(mediumTransforms));
-    farTree.setTransforms(anchored(farTransforms));
-    fern.setTransforms(anchored(withinDistance(fernTransforms, camera, WORLD.vegetationViewDistance)));
-    shrub.setTransforms(anchored(withinDistance(shrubTransforms, camera, WORLD.vegetationViewDistance)));
-    grass.setTransforms(anchored(withinDistance(grassTransforms, camera, 34)));
-    deadfall.setTransforms(anchored(withinDistance(deadfallTransforms, camera, WORLD.vegetationViewDistance)));
+  function anchored(items) {
+    if (!items.length) return items;
+    return [{
+      ...items[0], scale: 1, scaleX: 1, scaleY: 1, scaleZ: 1,
+      rotation: 0, rotationX: 0, rotationZ: 0
+    }, ...items.slice(1)];
   }
 
-  updateVisibleVegetation();
-  let updateTimer = 0;
+  let lastUpdateX = Number.POSITIVE_INFINITY;
+  let lastUpdateZ = Number.POSITIVE_INFINITY;
+
+  function updateVisibleForest(force = false) {
+    const moved = Math.hypot(camera.position.x - lastUpdateX, camera.position.z - lastUpdateZ);
+    if (!force && moved < 2.5) return;
+    lastUpdateX = camera.position.x;
+    lastUpdateZ = camera.position.z;
+
+    const near = [];
+    const medium = [];
+    const far = [];
+    for (const tree of allTrees) {
+      const distance = Math.hypot(tree.x - camera.position.x, tree.z - camera.position.z);
+      if (distance <= WORLD.nearTreeDistance) near.push(tree);
+      else if (distance <= WORLD.mediumTreeDistance) medium.push(tree);
+      else if (distance <= WORLD.farTreeViewDistance) far.push(tree);
+    }
+
+    nearTree.setTransforms(anchored(near));
+    mediumTree.setTransforms(anchored(medium));
+    farTree.setTransforms(anchored(far));
+    deadfall.setTransforms(anchored(withinDistance(deadfallTransforms, camera, 52)));
+  }
+
+  updateVisibleForest(true);
+  let elapsed = 0;
   scene.onBeforeRenderObservable.add(() => {
-    updateTimer += scene.getEngine().getDeltaTime();
-    if (updateTimer < 700) return;
-    updateTimer = 0;
-    updateVisibleVegetation();
-    });
+    elapsed += scene.getEngine().getDeltaTime();
+    if (elapsed < 650) return;
+    elapsed = 0;
+    updateVisibleForest(false);
+  });
 
   createDebugPanel(scene, counts);
   setStatus("Forest ready");
-  setTimeout(() => document.getElementById("loadingScreen")?.remove(), 250);
-
-  const perimeterCandidates = allTrees
-    .filter(tree => {
-      const distance = Math.hypot(tree.x, tree.z);
-      return distance >= WORLD.clearingRadius + 3.2 && distance <= WORLD.clearingRadius + 10.5;
-    })
-    .sort((a, b) => Math.atan2(a.z, a.x) - Math.atan2(b.z, b.x));
-
-  // Select trees around the full 360-degree perimeter instead of one cluster.
-  const burningTrees = [];
-  const burningTreeCount = Math.min(20, perimeterCandidates.length);
-  for (let index = 0; index < burningTreeCount; index++) {
-    burningTrees.push(
-      perimeterCandidates[Math.floor(index * perimeterCandidates.length / burningTreeCount)]
-    );
-  }
+  setTimeout(() => document.getElementById("loadingScreen")?.remove(), 180);
 
   return {
     counts,
     clearingRadius: WORLD.clearingRadius,
     forestRadius: WORLD.forestRadius,
-    fireData: {
-      burningTrees,
-      collapseCenter: new BABYLON.Vector3(1.4, 0, 0.6),
-      centralCollapse
-    }
+    fireData: { burningTrees: [], collapseCenter: BABYLON.Vector3.Zero(), centralCollapse: [] }
   };
 }

@@ -199,3 +199,18 @@ body {
 #crouchButton[data-posture="prone"] {
   background: rgba(105, 62, 48, .82);
 }
+
+#dayClock {
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  z-index: 110;
+  padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,.20);
+  border-radius: 6px;
+  background: rgba(0,0,0,.48);
+  color: rgba(255,255,255,.88);
+  font: 11px/1.2 -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: .08em;
+  pointer-events: none;
+}
