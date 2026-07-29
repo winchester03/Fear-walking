@@ -48,7 +48,7 @@ function makeForestFloorTexture(scene) {
 export function createTerrain(scene) {
   const material = new BABYLON.StandardMaterial("groundMaterial", scene);
   material.diffuseTexture = makeForestFloorTexture(scene);
-  material.diffuseColor = new BABYLON.Color3(0.72, 0.72, 0.68);
+  material.diffuseColor = new BABYLON.Color3(1.0, 1.0, 1.0);
   material.ambientColor = new BABYLON.Color3(0.12, 0.13, 0.08);
   material.specularColor = BABYLON.Color3.Black();
   material.maxSimultaneousLights = 3;

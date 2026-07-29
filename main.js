@@ -31,7 +31,7 @@ window.addEventListener("resize", () => engine.resize());
 
 createForest(scene, camera)
   .then(({ counts }) => {
-    console.log("Fear Walking 0.0.4 forest ready", counts);
+    console.log("Fear Walking 0.0.5 forest ready", counts);
     document.getElementById("loadingScreen")?.remove();
   })
   .catch(error => {
