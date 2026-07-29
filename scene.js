@@ -1,288 +1,142 @@
 export function createScene(scene, canvas) {
   const camera = new BABYLON.FreeCamera(
     "forestCamera",
-    new BABYLON.Vector3(0, 2, -12),
+    new BABYLON.Vector3(0, 1.72, -12),
     scene
   );
 
-  camera.setTarget(
-    new BABYLON.Vector3(0, 2, 0)
-  );
-
+  camera.setTarget(new BABYLON.Vector3(0, 1.72, 0));
   camera.minZ = 0.05;
   camera.inertia = 0;
-  camera.checkCollisions = false;
-  camera.applyGravity = false;
-
+  camera.checkCollisions = true;
+  camera.applyGravity = true;
+  camera.ellipsoid = new BABYLON.Vector3(0.35, 0.82, 0.35);
+  camera.ellipsoidOffset = new BABYLON.Vector3(0, 0.82, 0);
+  scene.gravity = new BABYLON.Vector3(0, -0.32, 0);
+  scene.collisionsEnabled = true;
   scene.activeCamera = camera;
 
-  // Lightweight post-process antialiasing for foliage edges and distant trees.
-  const fxaa = new BABYLON.FxaaPostProcess(
-    "forestFxaa",
-    1.0,
-    camera
-  );
+  const fxaa = new BABYLON.FxaaPostProcess("forestFxaa", 1.0, camera);
   fxaa.samples = 1;
 
-  let activePointer = null;
-  let lastX = 0;
-  let lastY = 0;
+  let pointer = null;
+  let targetPoint = null;
+  let running = false;
+  let stance = "stand";
+  let crouchHoldTimer = null;
 
-  const lookSensitivity = 0.004;
+  const STANCE_HEIGHTS = { stand: 1.72, crouch: 1.18, prone: 0.55 };
+  const WALK_SPEED = 3.2;
+  const RUN_SPEED = 6.2;
+  const ROTATE_THRESHOLD = 10;
+  const HOLD_TO_RUN_MS = 260;
+
+  function setStance(next) {
+    stance = next;
+    const height = STANCE_HEIGHTS[stance];
+    camera.ellipsoid.y = Math.max(0.28, height * 0.48);
+    camera.ellipsoidOffset.y = camera.ellipsoid.y;
+    const button = document.getElementById("stanceButton");
+    if (button) button.textContent = stance === "stand" ? "CROUCH" : stance.toUpperCase();
+  }
+
+  function pickWalkTarget(event) {
+    const pick = scene.pick(event.clientX, event.clientY, mesh => mesh.name === "forestGround");
+    if (pick?.hit && pick.pickedPoint) {
+      targetPoint = pick.pickedPoint.clone();
+      targetPoint.y = camera.position.y;
+    }
+  }
 
   canvas.addEventListener("pointerdown", event => {
-    activePointer = event.pointerId;
-    lastX = event.clientX;
-    lastY = event.clientY;
-
-    canvas.setPointerCapture?.(
-      event.pointerId
-    );
+    if (event.target !== canvas) return;
+    event.preventDefault();
+    pointer = {
+      id: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      moved: false,
+      holdTimer: setTimeout(() => {
+        if (pointer && !pointer.moved && targetPoint) running = true;
+      }, HOLD_TO_RUN_MS)
+    };
+    canvas.setPointerCapture?.(event.pointerId);
   });
 
   canvas.addEventListener("pointermove", event => {
-    if (event.pointerId !== activePointer) {
-      return;
+    if (!pointer || event.pointerId !== pointer.id) return;
+    const total = Math.hypot(event.clientX - pointer.startX, event.clientY - pointer.startY);
+    if (total > ROTATE_THRESHOLD) pointer.moved = true;
+    if (pointer.moved) {
+      camera.rotation.y += (event.clientX - pointer.lastX) * 0.004;
+      camera.rotation.x += (event.clientY - pointer.lastY) * 0.004;
+      camera.rotation.x = BABYLON.Scalar.Clamp(camera.rotation.x, -1.42, 1.42);
     }
-
-    const movementX =
-      event.clientX - lastX;
-
-    const movementY =
-      event.clientY - lastY;
-
-    camera.rotation.y +=
-      movementX * lookSensitivity;
-
-    camera.rotation.x +=
-      movementY * lookSensitivity;
-
-    camera.rotation.x =
-      BABYLON.Scalar.Clamp(
-        camera.rotation.x,
-        -1.45,
-        1.45
-      );
-
-    lastX = event.clientX;
-    lastY = event.clientY;
+    pointer.lastX = event.clientX;
+    pointer.lastY = event.clientY;
   });
 
-  function stopLooking(event) {
-    if (event.pointerId !== activePointer) {
-      return;
-    }
-
-    activePointer = null;
-
-    canvas.releasePointerCapture?.(
-      event.pointerId
-    );
+  function endPointer(event) {
+    if (!pointer || event.pointerId !== pointer.id) return;
+    clearTimeout(pointer.holdTimer);
+    if (!pointer.moved) pickWalkTarget(event);
+    running = false;
+    canvas.releasePointerCapture?.(event.pointerId);
+    pointer = null;
   }
+  canvas.addEventListener("pointerup", endPointer);
+  canvas.addEventListener("pointercancel", endPointer);
 
-  canvas.addEventListener(
-    "pointerup",
-    stopLooking
-  );
+  const stanceButton = document.createElement("button");
+  stanceButton.id = "stanceButton";
+  stanceButton.textContent = "CROUCH";
+  document.body.appendChild(stanceButton);
 
-  canvas.addEventListener(
-    "pointercancel",
-    stopLooking
-  );
+  stanceButton.addEventListener("pointerdown", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    crouchHoldTimer = setTimeout(() => {
+      setStance("prone");
+      crouchHoldTimer = null;
+    }, 520);
+  });
 
-  const movement = {
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-    up: false,
-    down: false
-  };
-
-  function createButton(
-    label,
-    bottom,
-    side,
-    sideDistance,
-    action
-  ) {
-    const button =
-      document.createElement("button");
-
-    button.textContent = label;
-
-    button.style.position = "fixed";
-    button.style.bottom = bottom;
-    button.style[side] = sideDistance;
-    button.style.width = "58px";
-    button.style.height = "58px";
-    button.style.borderRadius = "29px";
-    button.style.border =
-      "1px solid rgba(255,255,255,.35)";
-    button.style.background =
-      "rgba(0,0,0,.55)";
-    button.style.color = "white";
-    button.style.fontSize = "13px";
-    button.style.zIndex = "20";
-    button.style.touchAction = "none";
-    button.style.userSelect = "none";
-    button.style.webkitUserSelect = "none";
-    button.style.webkitTouchCallout = "none";
-    button.draggable = false;
-
-    function press(event) {
-      event.preventDefault();
-      event.stopPropagation();
-
-      movement[action] = true;
-
-      button.style.background =
-        "rgba(80,150,220,.7)";
+  stanceButton.addEventListener("pointerup", event => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (crouchHoldTimer) {
+      clearTimeout(crouchHoldTimer);
+      crouchHoldTimer = null;
+      setStance(stance === "stand" ? "crouch" : "stand");
     }
-
-    function release(event) {
-      event.preventDefault();
-      event.stopPropagation();
-
-      movement[action] = false;
-
-      button.style.background =
-        "rgba(0,0,0,.55)";
-    }
-
-    button.addEventListener(
-      "pointerdown",
-      press
-    );
-
-    button.addEventListener(
-      "pointerup",
-      release
-    );
-
-    button.addEventListener(
-      "pointercancel",
-      release
-    );
-
-    button.addEventListener(
-      "pointerleave",
-      release
-    );
-
-    document.body.appendChild(button);
-
-    return button;
-  }
-
-  createButton(
-    "FWD",
-    "100px",
-    "left",
-    "76px",
-    "forward"
-  );
-
-  createButton(
-    "BACK",
-    "26px",
-    "left",
-    "76px",
-    "backward"
-  );
-
-  createButton(
-    "LEFT",
-    "63px",
-    "left",
-    "10px",
-    "left"
-  );
-
-  createButton(
-    "RIGHT",
-    "63px",
-    "left",
-    "142px",
-    "right"
-  );
-
-  createButton(
-    "UP",
-    "100px",
-    "right",
-    "22px",
-    "up"
-  );
-
-  createButton(
-    "DOWN",
-    "26px",
-    "right",
-    "22px",
-    "down"
-  );
+  });
+  stanceButton.addEventListener("pointercancel", () => {
+    if (crouchHoldTimer) clearTimeout(crouchHoldTimer);
+    crouchHoldTimer = null;
+  });
 
   scene.onBeforeRenderObservable.add(() => {
-    const deltaTime =
-      scene.getEngine().getDeltaTime() /
-      1000;
-
-    const speed = 8;
-    const distance =
-      speed * deltaTime;
-
-    const forward =
-      camera.getDirection(
-        BABYLON.Axis.Z
-      );
-
-    const right =
-      camera.getDirection(
-        BABYLON.Axis.X
-      );
-
-    if (movement.forward) {
-      camera.position.addInPlace(
-        forward.scale(distance)
-      );
+    const dt = Math.min(scene.getEngine().getDeltaTime() / 1000, 0.05);
+    if (targetPoint) {
+      const delta = targetPoint.subtract(camera.position);
+      delta.y = 0;
+      const distance = delta.length();
+      if (distance < 0.35) {
+        targetPoint = null;
+        running = false;
+      } else {
+        const stanceMultiplier = stance === "prone" ? 0.34 : stance === "crouch" ? 0.62 : 1;
+        const speed = (running ? RUN_SPEED : WALK_SPEED) * stanceMultiplier;
+        const movement = delta.normalize().scale(Math.min(speed * dt, distance));
+        camera.moveWithCollisions(movement);
+      }
     }
 
-    if (movement.backward) {
-      camera.position.subtractInPlace(
-        forward.scale(distance)
-      );
-    }
-
-    if (movement.left) {
-      camera.position.subtractInPlace(
-        right.scale(distance)
-      );
-    }
-
-    if (movement.right) {
-      camera.position.addInPlace(
-        right.scale(distance)
-      );
-    }
-
-    if (movement.up) {
-      camera.position.y += distance;
-    }
-
-    if (movement.down) {
-      camera.position.y -= distance;
-    }
-
-    // Prevent flying underneath the ground.
-    camera.position.y =
-      Math.max(
-        0.4,
-        camera.position.y
-      );
+    const desired = STANCE_HEIGHTS[stance];
+    camera.position.y += (desired - camera.position.y) * Math.min(1, dt * 8);
   });
 
-  return {
-    camera
-  };
+  return { camera, getStance: () => stance };
 }

@@ -78,3 +78,21 @@ body {
   font-size: 11px;
   opacity: 0.65;
 }
+
+#stanceButton {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(24px, env(safe-area-inset-bottom));
+  z-index: 50;
+  min-width: 82px;
+  height: 54px;
+  padding: 0 14px;
+  border: 1px solid rgba(255,255,255,.42);
+  border-radius: 27px;
+  background: rgba(4,8,12,.68);
+  color: white;
+  font: 600 12px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+  letter-spacing: .08em;
+  touch-action: none;
+}
+#stanceButton:active { background: rgba(65,105,145,.82); }
