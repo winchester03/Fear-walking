@@ -10,7 +10,7 @@ const WORLD = Object.freeze({
   nearTreeDistance: 25,
   mediumTreeDistance: 75,
   farTreeViewDistance: 110,
-  vegetationViewDistance: 38
+  vegetationViewDistance: 48
 });
 
 function seededRandom(seed) {
@@ -445,7 +445,7 @@ export async function createForest(scene, camera) {
   const status = document.getElementById("loadingStatus");
   const setStatus = text => { if (status) status.textContent = text; };
 
-  setStatus("Loading optimized trees…");
+  setStatus("Loading original pine trees…");
   const treeTextures = createTreeTextureSet(scene);
 
   async function loadTree(primaryFile, fallbackFile = "pine-tree-low.glb") {
@@ -458,15 +458,27 @@ export async function createForest(scene, camera) {
   }
 
   // Load the three LOD assets sequentially to avoid a large mobile memory spike.
-  const nearTree = await loadTree("pine-tree-10000.glb");
-  setStatus("Loading medium trees…");
-  const mediumTree = await loadTree("pine-tree-3000.glb");
-  setStatus("Loading distant trees…");
-  const farTree = await loadTree("pine-tree-1000.glb");
+  // Use the original detailed pine model close to the player. The prior generated
+  // LOD meshes looked like silhouettes and have been removed from the visible forest.
+  const nearTree = await loadTree("pine-tree.glb", "pine-tree-low.glb");
+  setStatus("Loading original distant pines…");
+  const mediumTree = await loadTree("pine-tree-low.glb", "pine-tree-1000.glb");
+  setStatus("Loading distant tree silhouettes…");
+  const farTree = await loadTree("pine-tree-1000.glb", "pine-tree-low.glb");
+
+  setStatus("Loading ferns…");
+  const fern = await loadMultipartAsset(scene, "fern.glb", 0.9, 0.92);
+  setStatus("Loading shrubs…");
+  const shrub = await loadMultipartAsset(scene, "shrub.glb", 1.15, 0.88);
+  setStatus("Loading grass…");
+  const grass = await loadMultipartAsset(scene, "grass.glb", 0.48, 1.0);
   setStatus("Loading fallen trees…");
-  const deadfall = await loadMultipartAsset(scene, "dead-tree-trunk.glb", 1.15, 0.55);
+  const deadfall = await loadMultipartAsset(scene, "dead-tree-trunk.glb", 1.15, 0.72);
 
   const allTrees = makeTreeLayout();
+  const fernTransforms = makeScatter(310, 3.5, 62, 71931, 0.72, 1.28, allTrees);
+  const shrubTransforms = makeScatter(115, 5.5, 70, 51388, 0.68, 1.32, allTrees);
+  const grassTransforms = makeScatter(620, 2.5, 58, 92841, 0.72, 1.22, allTrees);
 
   // The old central cutscene pile is removed. Fallen trunks are dispersed
   // throughout the forest with deterministic random placement.
@@ -524,9 +536,9 @@ export async function createForest(scene, camera) {
 
   const counts = {
     trees: allTrees.length,
-    ferns: 0,
-    shrubs: 0,
-    grass: 0,
+    ferns: fernTransforms.length,
+    shrubs: shrubTransforms.length,
+    grass: grassTransforms.length,
     deadfall: deadfallTransforms.length
   };
 
@@ -561,6 +573,9 @@ export async function createForest(scene, camera) {
     mediumTree.setTransforms(anchored(medium));
     farTree.setTransforms(anchored(far));
     deadfall.setTransforms(anchored(withinDistance(deadfallTransforms, camera, 52)));
+    fern.setTransforms(anchored(withinDistance(fernTransforms, camera, 42)));
+    shrub.setTransforms(anchored(withinDistance(shrubTransforms, camera, 48)));
+    grass.setTransforms(anchored(withinDistance(grassTransforms, camera, 34)));
   }
 
   updateVisibleForest(true);
@@ -580,6 +595,7 @@ export async function createForest(scene, camera) {
     counts,
     clearingRadius: WORLD.clearingRadius,
     forestRadius: WORLD.forestRadius,
+    shadowCasters: nearTree.meshes,
     fireData: { burningTrees: [], collapseCenter: BABYLON.Vector3.Zero(), centralCollapse: [] }
   };
 }

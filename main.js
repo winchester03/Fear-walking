@@ -11,7 +11,7 @@ const { camera } = createScene(scene, canvas);
 
 createTerrain(scene);
 const lighting = createLighting(scene);
-createNightSky(scene, lighting.cycle);
+createNightSky(scene, lighting.cycle, camera);
 
 const clock = document.createElement("div");
 clock.id = "dayClock";
@@ -31,7 +31,7 @@ window.addEventListener("resize", () => engine.resize());
 
 createForest(scene, camera)
   .then(({ counts }) => {
-    console.log("Fear Walking 0.0.5 forest ready", counts);
+    console.log("Fear Walking 0.0.6 forest ready", counts);
     document.getElementById("loadingScreen")?.remove();
   })
   .catch(error => {
