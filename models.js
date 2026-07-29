@@ -5,9 +5,9 @@ const WORLD = Object.freeze({
   forestRadius: 58,
   clearingRadius: 9,
   treeSpacing: 4.35,
-  heroTreeCount: 6,
-  lowTreeViewDistance: 64,
-  vegetationViewDistance: 42
+  heroTreeCount: 2,
+  lowTreeViewDistance: 52,
+  vegetationViewDistance: 30
 });
 
 function seededRandom(seed) {
@@ -34,15 +34,17 @@ function collectMaterials(meshes) {
   return materials;
 }
 
-function tuneMaterial(material, brightness = 0.62) {
+function tuneMaterial(material, brightness = 1.0) {
   if (material instanceof BABYLON.PBRMaterial) {
     material.albedoColor = material.albedoColor.scale(brightness);
+    material.emissiveColor = material.albedoColor.scale(0.08);
     material.metallic = 0;
     material.roughness = Math.max(material.roughness ?? 0.8, 0.86);
-    material.environmentIntensity = 0.22;
+    material.environmentIntensity = 0.55;
     material.backFaceCulling = false;
   } else if (material instanceof BABYLON.StandardMaterial) {
     material.diffuseColor = material.diffuseColor.scale(brightness);
+    material.emissiveColor = material.diffuseColor.scale(0.06);
     material.specularColor = new BABYLON.Color3(0.004, 0.006, 0.01);
     material.backFaceCulling = false;
   }
@@ -204,7 +206,7 @@ async function loadHeroTree(scene) {
     scene
   );
   const meshes = visibleMeshes(result);
-  collectMaterials(meshes).forEach(material => tuneMaterial(material, 0.58));
+  collectMaterials(meshes).forEach(material => tuneMaterial(material, 1.0));
   result.meshes.forEach(mesh => {
     mesh.isPickable = false;
     mesh.checkCollisions = false;
@@ -324,16 +326,16 @@ export async function createForest(scene, camera) {
 
   setStatus("Loading trees…");
   const heroTreeRoot = await loadHeroTree(scene);
-  const lowTree = await loadMultipartAsset(scene, "pine-tree.glb", 12.5, 0.58);
+  const lowTree = await loadMultipartAsset(scene, "pine-tree-low.glb", 12.5, 1.0);
 
   setStatus("Loading ferns…");
-  const fern = await loadMultipartAsset(scene, "fern.glb", 0.75, 0.64);
+  const fern = await loadMultipartAsset(scene, "fern.glb", 0.75, 1.0);
   setStatus("Loading shrubs…");
-  const shrub = await loadMultipartAsset(scene, "shrub.glb", 1.25, 0.62);
+  const shrub = await loadMultipartAsset(scene, "shrub.glb", 1.25, 1.0);
   setStatus("Loading grass…");
-  const grass = await loadMultipartAsset(scene, "grass.glb", 0.6, 0.62);
+  const grass = await loadMultipartAsset(scene, "grass.glb", 0.6, 1.0);
   setStatus("Loading deadfall…");
-  const deadfall = await loadMultipartAsset(scene, "dead-tree-trunk.glb", 1.15, 0.55);
+  const deadfall = await loadMultipartAsset(scene, "dead-tree-trunk.glb", 1.15, 0.9);
 
   const allTrees = makeTreeLayout();
   const heroTransforms = allTrees.slice(0, WORLD.heroTreeCount);
@@ -350,10 +352,10 @@ export async function createForest(scene, camera) {
     tree.setEnabled(true);
   });
 
-  const fernTransforms = makeScatter(150, WORLD.clearingRadius + 1.5, 50, 8103, 0.7, 1.35, allTrees);
-  const shrubTransforms = makeScatter(65, WORLD.clearingRadius + 2.5, 50, 9221, 0.78, 1.35, allTrees);
-  const grassTransforms = makeScatter(190, WORLD.clearingRadius - 0.5, 51, 1619, 0.62, 1.25, allTrees);
-  const deadfallTransforms = makeScatter(18, WORLD.clearingRadius + 4, 49, 31842, 0.82, 1.25, allTrees)
+  const fernTransforms = makeScatter(85, WORLD.clearingRadius + 1.5, 50, 8103, 0.7, 1.35, allTrees);
+  const shrubTransforms = makeScatter(38, WORLD.clearingRadius + 2.5, 50, 9221, 0.78, 1.35, allTrees);
+  const grassTransforms = makeScatter(110, WORLD.clearingRadius - 0.5, 51, 1619, 0.62, 1.25, allTrees);
+  const deadfallTransforms = makeScatter(12, WORLD.clearingRadius + 4, 49, 31842, 0.82, 1.25, allTrees)
     .map(item => ({ ...item, y: -0.22 }));
 
   const counts = {
@@ -375,7 +377,7 @@ export async function createForest(scene, camera) {
     lowTree.setTransforms(anchored(withinDistance(lowTreeTransforms, camera, WORLD.lowTreeViewDistance)));
     fern.setTransforms(anchored(withinDistance(fernTransforms, camera, WORLD.vegetationViewDistance)));
     shrub.setTransforms(anchored(withinDistance(shrubTransforms, camera, WORLD.vegetationViewDistance)));
-    grass.setTransforms(anchored(withinDistance(grassTransforms, camera, 32)));
+    grass.setTransforms(anchored(withinDistance(grassTransforms, camera, 24)));
     deadfall.setTransforms(anchored(withinDistance(deadfallTransforms, camera, WORLD.vegetationViewDistance)));
   }
 

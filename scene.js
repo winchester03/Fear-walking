@@ -16,8 +16,6 @@ export function createScene(scene, canvas) {
   scene.collisionsEnabled = true;
   scene.activeCamera = camera;
 
-  const fxaa = new BABYLON.FxaaPostProcess("forestFxaa", 1.0, camera);
-  fxaa.samples = 1;
 
   let pointer = null;
   let targetPoint = null;
