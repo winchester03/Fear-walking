@@ -1,12 +1,11 @@
 const MODEL_ROOT = "./assets/models/";
-const TEXTURE_ROOT = "./assets/textures/";
 
 const WORLD = Object.freeze({
   seed: 573921,
   forestRadius: 58,
   clearingRadius: 9,
   treeSpacing: 4.35,
-  heroTreeCount: 3,
+  heroTreeCount: 6,
   lowTreeViewDistance: 64,
   vegetationViewDistance: 42
 });
@@ -33,67 +32,6 @@ function collectMaterials(meshes) {
     }
   }
   return materials;
-}
-
-
-function createTreeTextureSet(scene) {
-  function load(name) {
-    const texture = new BABYLON.Texture(
-      `${TEXTURE_ROOT}${name}`,
-      scene,
-      true,
-      false
-    );
-    texture.gammaSpace = true;
-    return texture;
-  }
-
-  return {
-    trunkA: load("tree-trunk-a.jpg"),
-    trunkB: load("tree-trunk-b.jpg"),
-    trunkC: load("tree-trunk-c.jpg"),
-    bark: load("tree-bark.jpg"),
-    dead: load("tree-dead.jpg"),
-    twig: load("tree-twig.jpg")
-  };
-}
-
-function applyTreeTextures(meshes, textures) {
-  const materials = collectMaterials(meshes);
-
-  materials.forEach(material => {
-    const name = (material.name || "").toLowerCase();
-    const isTwig = name.includes("twig");
-
-    let texture = textures.bark;
-    if (isTwig) texture = textures.twig;
-    else if (name.includes("trunk_a")) texture = textures.trunkA;
-    else if (name.includes("trunk_b")) texture = textures.trunkB;
-    else if (name.includes("trunk_c")) texture = textures.trunkC;
-    else if (name.includes("dead")) texture = textures.dead;
-
-    if (material instanceof BABYLON.PBRMaterial) {
-      material.albedoTexture = texture;
-      material.albedoColor = isTwig
-        ? new BABYLON.Color3(0.44, 0.60, 0.42)
-        : new BABYLON.Color3(0.62, 0.53, 0.43);
-      material.metallic = 0;
-      material.roughness = isTwig ? 0.92 : 0.96;
-      material.environmentIntensity = 0.1;
-      material.backFaceCulling = !isTwig;
-
-      if (isTwig) {
-        material.transparencyMode = BABYLON.Material.MATERIAL_OPAQUE;
-      }
-    } else if (material instanceof BABYLON.StandardMaterial) {
-      material.diffuseTexture = texture;
-      material.diffuseColor = isTwig
-        ? new BABYLON.Color3(0.38, 0.54, 0.36)
-        : new BABYLON.Color3(0.58, 0.47, 0.36);
-      material.specularColor = BABYLON.Color3.Black();
-      material.backFaceCulling = !isTwig;
-    }
-  });
 }
 
 function tuneMaterial(material, brightness = 0.62) {
@@ -138,7 +76,7 @@ function combinedBounds(meshes) {
   return { minimum, maximum };
 }
 
-async function loadMultipartAsset(scene, filename, targetHeight, brightness = 0.62, treeTextures = null) {
+async function loadMultipartAsset(scene, filename, targetHeight, brightness = 0.62) {
   const result = await BABYLON.SceneLoader.ImportMeshAsync(
     "",
     MODEL_ROOT,
@@ -151,8 +89,7 @@ async function loadMultipartAsset(scene, filename, targetHeight, brightness = 0.
     throw new Error(`${filename} contains no visible geometry.`);
   }
 
-  if (treeTextures) applyTreeTextures(meshes, treeTextures);
-  else collectMaterials(meshes).forEach(material => tuneMaterial(material, brightness));
+  collectMaterials(meshes).forEach(material => tuneMaterial(material, brightness));
 
   // Preserve the complete model hierarchy by baking each part independently.
   for (const mesh of meshes) {
@@ -259,7 +196,7 @@ async function loadMultipartAsset(scene, filename, targetHeight, brightness = 0.
   };
 }
 
-async function loadHeroTree(scene, treeTextures) {
+async function loadHeroTree(scene) {
   const result = await BABYLON.SceneLoader.ImportMeshAsync(
     "",
     MODEL_ROOT,
@@ -267,7 +204,7 @@ async function loadHeroTree(scene, treeTextures) {
     scene
   );
   const meshes = visibleMeshes(result);
-  applyTreeTextures(meshes, treeTextures);
+  collectMaterials(meshes).forEach(material => tuneMaterial(material, 0.58));
   result.meshes.forEach(mesh => {
     mesh.isPickable = false;
     mesh.checkCollisions = false;
@@ -386,15 +323,8 @@ export async function createForest(scene, camera) {
   const setStatus = text => { if (status) status.textContent = text; };
 
   setStatus("Loading trees…");
-  const treeTextures = createTreeTextureSet(scene);
-  const heroTreeRoot = await loadHeroTree(scene, treeTextures);
-  const lowTree = await loadMultipartAsset(
-    scene,
-    "pine-tree-low.glb",
-    12.5,
-    0.58,
-    treeTextures
-  );
+  const heroTreeRoot = await loadHeroTree(scene);
+  const lowTree = await loadMultipartAsset(scene, "pine-tree.glb", 12.5, 0.58);
 
   setStatus("Loading ferns…");
   const fern = await loadMultipartAsset(scene, "fern.glb", 0.75, 0.64);

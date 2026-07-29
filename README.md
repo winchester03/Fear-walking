@@ -1,8 +1,10 @@
-# The Forest Build 0.3.4
+# The Forest Build 0.3.2
 
-Changes:
-- Added separate dark dirt-brown bark/trunk materials for trunk A, B, C, bark, and dead branches.
-- Added dark green foliage texture and tint to twig/needle materials.
-- Increased mobile render resolution moderately (hardware scaling 1.35) without enabling expensive FXAA.
-- Added low-cost drifting ground mist plus blue distance fog.
-- Preserved the performant vegetation counts and distance culling from Build 0.3.3.
+Changes from 0.3.1:
+- All pine trees now use the fully textured pine-tree.glb asset.
+- Dead trunks are lowered slightly so they rest on the ground.
+- Higher internal rendering resolution.
+- Engine antialiasing enabled.
+- FXAA added to reduce jagged and grainy foliage edges.
+
+Upload the entire contents of this folder to the repository root.

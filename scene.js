@@ -16,8 +16,13 @@ export function createScene(scene, canvas) {
 
   scene.activeCamera = camera;
 
-  // Post-processing is disabled on mobile to protect frame rate.
-
+  // Lightweight post-process antialiasing for foliage edges and distant trees.
+  const fxaa = new BABYLON.FxaaPostProcess(
+    "forestFxaa",
+    1.0,
+    camera
+  );
+  fxaa.samples = 1;
 
   let activePointer = null;
   let lastX = 0;
