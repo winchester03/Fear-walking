@@ -3,7 +3,6 @@ import { createScene } from "./scene.js";
 import { createTerrain } from "./terrain.js";
 import { createLighting } from "./lighting.js";
 import { createForest } from "./models.js";
-import { createForestFire } from "./fire.js";
 
 const canvas = document.getElementById("gameCanvas");
 const { engine, scene } = createGame(canvas);
@@ -16,10 +15,7 @@ engine.runRenderLoop(() => scene.render());
 window.addEventListener("resize", () => engine.resize());
 
 createForest(scene, camera)
-  .then(({ counts, fireData }) => {
-    createForestFire(scene, fireData);
-    console.log("Forest and fire ready", counts);
-  })
+  .then(({ counts }) => console.log("Forest ready", counts))
   .catch(error => {
     console.error("Forest failed", error);
     document.getElementById("loadingScreen")?.remove();
