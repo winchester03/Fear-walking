@@ -5,9 +5,9 @@ const WORLD = Object.freeze({
   forestRadius: 58,
   clearingRadius: 9,
   treeSpacing: 4.35,
-  heroTreeCount: 2,
-  lowTreeViewDistance: 52,
-  vegetationViewDistance: 30
+  heroTreeCount: 0,
+  lowTreeViewDistance: 38,
+  vegetationViewDistance: 22
 });
 
 function seededRandom(seed) {
@@ -35,18 +35,34 @@ function collectMaterials(meshes) {
 }
 
 function tuneMaterial(material, brightness = 1.0) {
+  const name = (material.name || "").toLowerCase();
+  let fallback = new BABYLON.Color3(0.34, 0.24, 0.12);
+  if (name.includes("twig") || name.includes("leaf") || name.includes("needle") || name.includes("fern") || name.includes("grass") || name.includes("shrub")) {
+    fallback = new BABYLON.Color3(0.16, 0.38, 0.12);
+  } else if (name.includes("dead")) {
+    fallback = new BABYLON.Color3(0.29, 0.22, 0.14);
+  } else if (name.includes("bark") || name.includes("trunk")) {
+    fallback = new BABYLON.Color3(0.30, 0.20, 0.105);
+  }
+
   if (material instanceof BABYLON.PBRMaterial) {
-    material.albedoColor = material.albedoColor.scale(brightness);
-    material.emissiveColor = material.albedoColor.scale(0.08);
+    // Several optimized GLBs contain only roughness maps and no base-color map.
+    // Assign explicit natural colors instead of allowing them to render gray/black.
+    if (!material.albedoTexture) material.albedoColor = fallback.scale(brightness);
+    else material.albedoColor = new BABYLON.Color3(brightness, brightness, brightness);
+    material.emissiveColor = fallback.scale(0.035);
     material.metallic = 0;
-    material.roughness = Math.max(material.roughness ?? 0.8, 0.86);
-    material.environmentIntensity = 0.55;
+    material.roughness = 0.92;
+    material.environmentIntensity = 0.35;
     material.backFaceCulling = false;
+    material.freeze();
   } else if (material instanceof BABYLON.StandardMaterial) {
-    material.diffuseColor = material.diffuseColor.scale(brightness);
-    material.emissiveColor = material.diffuseColor.scale(0.06);
-    material.specularColor = new BABYLON.Color3(0.004, 0.006, 0.01);
+    if (!material.diffuseTexture) material.diffuseColor = fallback.scale(brightness);
+    else material.diffuseColor = new BABYLON.Color3(brightness, brightness, brightness);
+    material.emissiveColor = fallback.scale(0.025);
+    material.specularColor = BABYLON.Color3.Black();
     material.backFaceCulling = false;
+    material.freeze();
   }
 }
 
@@ -325,7 +341,7 @@ export async function createForest(scene, camera) {
   const setStatus = text => { if (status) status.textContent = text; };
 
   setStatus("Loading trees…");
-  const heroTreeRoot = await loadHeroTree(scene);
+  const heroTreeRoot = null;
   const lowTree = await loadMultipartAsset(scene, "pine-tree-low.glb", 12.5, 1.0);
 
   setStatus("Loading ferns…");
@@ -352,10 +368,10 @@ export async function createForest(scene, camera) {
     tree.setEnabled(true);
   });
 
-  const fernTransforms = makeScatter(85, WORLD.clearingRadius + 1.5, 50, 8103, 0.7, 1.35, allTrees);
-  const shrubTransforms = makeScatter(38, WORLD.clearingRadius + 2.5, 50, 9221, 0.78, 1.35, allTrees);
-  const grassTransforms = makeScatter(110, WORLD.clearingRadius - 0.5, 51, 1619, 0.62, 1.25, allTrees);
-  const deadfallTransforms = makeScatter(12, WORLD.clearingRadius + 4, 49, 31842, 0.82, 1.25, allTrees)
+  const fernTransforms = makeScatter(42, WORLD.clearingRadius + 1.5, 50, 8103, 0.7, 1.35, allTrees);
+  const shrubTransforms = makeScatter(20, WORLD.clearingRadius + 2.5, 50, 9221, 0.78, 1.35, allTrees);
+  const grassTransforms = makeScatter(55, WORLD.clearingRadius - 0.5, 51, 1619, 0.62, 1.25, allTrees);
+  const deadfallTransforms = makeScatter(7, WORLD.clearingRadius + 4, 49, 31842, 0.82, 1.25, allTrees)
     .map(item => ({ ...item, y: -0.22 }));
 
   const counts = {
@@ -377,16 +393,17 @@ export async function createForest(scene, camera) {
     lowTree.setTransforms(anchored(withinDistance(lowTreeTransforms, camera, WORLD.lowTreeViewDistance)));
     fern.setTransforms(anchored(withinDistance(fernTransforms, camera, WORLD.vegetationViewDistance)));
     shrub.setTransforms(anchored(withinDistance(shrubTransforms, camera, WORLD.vegetationViewDistance)));
-    grass.setTransforms(anchored(withinDistance(grassTransforms, camera, 24)));
+    grass.setTransforms(anchored(withinDistance(grassTransforms, camera, 17)));
     deadfall.setTransforms(anchored(withinDistance(deadfallTransforms, camera, WORLD.vegetationViewDistance)));
   }
 
   updateVisibleVegetation();
-  let updateTimer = 0;
+  let lastUpdateX = camera.position.x;
+  let lastUpdateZ = camera.position.z;
   scene.onBeforeRenderObservable.add(() => {
-    updateTimer += scene.getEngine().getDeltaTime();
-    if (updateTimer < 700) return;
-    updateTimer = 0;
+    if (Math.hypot(camera.position.x - lastUpdateX, camera.position.z - lastUpdateZ) < 4.0) return;
+    lastUpdateX = camera.position.x;
+    lastUpdateZ = camera.position.z;
     updateVisibleVegetation();
   });
 

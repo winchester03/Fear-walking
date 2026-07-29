@@ -1,11 +1,11 @@
-# Fear Walking 0.0.8
+# Fear Walking 0.0.9
 
-Performance and color repair build based on the working 0.3.2 forest.
+Performance and material correction build.
 
-- Restored full tree texture color and raised ambient lighting.
-- Uses pine-tree-low.glb for the bulk forest instead of duplicating the 19 MB high-detail tree.
-- Keeps two original high-detail trees near the starting clearing.
-- Reduced vegetation instance counts and draw distances.
-- Replaced cascaded shadows and volumetric post-processing with a 512px mobile-safe shadow map.
-- Removed FXAA post-processing.
-- Keeps the five-minute day/night cycle and prior touch controls.
+- Explicit natural colors for optimized tree, fern, shrub, grass and deadfall materials that lack base-color textures.
+- Procedural forest-floor texture restored.
+- Removed the 19 MB hero tree from runtime loading.
+- Removed real-time shadow rendering.
+- Reduced mobile render resolution and vegetation draw distance.
+- Vegetation buffers update only after the player moves four meters.
+- Existing touch controls and five-minute day/night cycle retained.

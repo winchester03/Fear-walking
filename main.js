@@ -8,16 +8,13 @@ const canvas = document.getElementById("gameCanvas");
 const { engine, scene } = createGame(canvas);
 const { camera } = createScene(scene, canvas);
 createTerrain(scene);
-const lighting = createLighting(scene, camera);
+createLighting(scene, camera);
 
 engine.runRenderLoop(() => scene.render());
 window.addEventListener("resize", () => engine.resize());
 
 createForest(scene, camera)
-  .then(({ counts }) => {
-    lighting.addShadowCasters();
-    console.log("Forest ready", counts);
-  })
+  .then(({ counts }) => console.log("Forest ready", counts))
   .catch(error => {
     console.error("Forest failed", error);
     document.getElementById("loadingScreen")?.remove();
