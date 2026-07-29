@@ -449,27 +449,18 @@ export async function createForest(scene, camera) {
   const treeTextures = createTreeTextureSet(scene);
   // Three mobile-safe procedural LOD assets. Their triangle budgets are
   // approximately 9,344, 2,976 and 928 triangles respectively.
-  const nearTree = await loadMultipartAsset(
-    scene,
-    "pine-tree-10000.glb",
-    12.5,
-    0.58,
-    treeTextures
-  );
-  const mediumTree = await loadMultipartAsset(
-    scene,
-    "pine-tree-3000.glb",
-    12.5,
-    0.58,
-    treeTextures
-  );
-  const farTree = await loadMultipartAsset(
-    scene,
-    "pine-tree-1000.glb",
-    12.5,
-    0.58,
-    treeTextures
-  );
+  async function loadTreeWithFallback(primaryFile) {
+    try {
+      return await loadMultipartAsset(scene, primaryFile, 12.5, 0.58, treeTextures);
+    } catch (primaryError) {
+      console.warn(`Could not load ${primaryFile}; using mobile fallback tree.`, primaryError);
+      return await loadMultipartAsset(scene, "pine-tree-low.glb", 12.5, 0.58, treeTextures);
+    }
+  }
+
+  const nearTree = await loadTreeWithFallback("pine-tree-10000.glb");
+  const mediumTree = await loadTreeWithFallback("pine-tree-3000.glb");
+  const farTree = await loadTreeWithFallback("pine-tree-1000.glb");
 
   setStatus("Loading ferns…");
   const fern = await loadMultipartAsset(scene, "fern.glb", 0.75, 0.64);
